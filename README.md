@@ -1,68 +1,321 @@
-# Multi-Tenant User Directory
+# ShardDirectory: Multi-Tenant User Directory
 
-This project implements Assignment 1 using Python with SOLID-oriented boundaries, unit tests, `Pipfile` environment management, and Docker/Docker Compose for reproducibility.
+Python reference implementation for Assignment 1 with:
+
+- relational user and billing storage
+- Redis-backed session storage
+- tenant-based sharding
+- primary/replica reporting
+- Docker reproducibility
+- unit and integration tests
+- logging, linting, formatting, and type checking
+
+## Assignment Mapping
+
+- Data modeling:
+  `users` and `billing_accounts` use a relational model because billing needs transactional consistency.
+- NoSQL:
+  sessions are stored in Redis for fast key-value lookup.
+- Sharding:
+  `tenant_id` is hashed to a shard so a tenant only hits one database shard.
+- Replication:
+  reporting reads are served from replica shard databases instead of primaries.
 
 ## Architecture
 
-The design intentionally separates responsibilities:
+- `src/multi_tenant_directory/domain/`
+  domain entities
+- `src/multi_tenant_directory/ports/`
+  repository and store abstractions
+- `src/multi_tenant_directory/services/`
+  sharding, directory, reporting, replication, bootstrap
+- `src/multi_tenant_directory/infrastructure/`
+  SQLite repositories and Redis session store
 
-- `domain/`: immutable business entities.
-- `ports/`: repository and store abstractions.
-- `services/`: orchestration for registration, billing, sharding, reporting, and replication.
-- `infrastructure/`: SQLite-backed relational persistence plus a key-value session store implementation.
-
-### SQL vs. NoSQL decision
-
-- Relational storage: billing and user directory records live in SQLite in this reference implementation because those operations need transactions, foreign keys, and consistency guarantees that mirror a production PostgreSQL choice.
-- Key-value storage: sessions use a `SessionStore` abstraction with a real Redis-backed implementation for the app runtime and an in-memory implementation for tests.
-
-### Sharding strategy
-
-- Tenants are partitioned with application-level sharding.
-- `HashTenantShardStrategy` deterministically maps `tenant_id` to a shard id.
-- Writes and transactional reads go only to that tenant's primary shard.
-
-### Replication strategy
-
-- Primary databases handle writes.
-- Replica databases serve analytics/reporting reads.
-- `ReplicationService` synchronizes each primary shard to its replica counterpart.
-- `AnalyticsReportService` only reads from replica repositories, protecting primaries from heavy report traffic.
-
-## Data model
+## Data Model
 
 Relational tables per shard:
 
 - `users(tenant_id, user_id, email, full_name, is_active)`
 - `billing_accounts(tenant_id, user_id, balance, currency)`
 
-Key-value shape for sessions:
+Redis session shape:
 
-- `session_id -> {tenant_id, user_id, payload}`
+- `session_id -> {"session_id", "tenant_id", "user_id", "payload"}`
 
-## Run locally
+## Python Version
 
-```bash
-python -m unittest discover -s tests -v
-python -m src.multi_tenant_directory.main
-```
+The project targets Python 3.14 across:
 
-## Run with Pipenv
+- `Pipfile`
+- `Dockerfile`
+- `mypy.ini`
+
+## Dependencies
+
+Runtime:
+
+- `redis`
+
+Development:
+
+- `pytest`
+- `ruff`
+- `black`
+- `mypy`
+
+## Local Setup
+
+Install dependencies:
 
 ```bash
 pipenv install --dev
-pipenv run python -m unittest discover -s tests -v
+```
+
+Useful commands:
+
+```bash
+pipenv run test
+pipenv run lint
+pipenv run typecheck
+pipenv run format
+pipenv run format-check
+pipenv run quality
+```
+
+## CLI Usage
+
+Default local run:
+
+```bash
 pipenv run python -m src.multi_tenant_directory.main
 ```
 
-## Run with Docker
+This runs the default `demo` mode for one tenant and one user.
+
+Custom demo run:
+
+```bash
+pipenv run python -m src.multi_tenant_directory.main demo \
+  --tenant-id tenant-acme \
+  --user-id user-001 \
+  --email owner@acme.example \
+  --full-name "Acme Owner" \
+  --starting-balance 100.00 \
+  --charge-amount 19.99 \
+  --session-id session-001 \
+  --session-payload '{"role":"owner"}'
+```
+
+Load test run:
+
+```bash
+pipenv run python -m src.multi_tenant_directory.main load-test \
+  --tenant-count 10 \
+  --users-per-tenant 20 \
+  --workers 8 \
+  --starting-balance 100.00 \
+  --charge-amount 5.00
+```
+
+## Docker
+
+Build and run the full stack:
 
 ```bash
 docker compose up --build
 ```
 
-The app writes shard databases to `./data`.
+Docker Compose is configured to run the `load-test` CLI by default, not the single-tenant demo.
 
-## Python Version
+Current Compose workload:
 
-The project targets Python 3.14 consistently across Pipenv, Docker, and static type checking.
+- `5` tenants
+- `10` users per tenant
+- `4` workers
+- starting balance `100.00`
+- charge amount `5.00`
+
+This starts:
+
+- the Python app
+- Redis
+
+Stop it with:
+
+```bash
+docker compose down
+```
+
+If you want a clean rerun:
+
+```bash
+docker compose down
+rm -f data/*.db
+docker compose up --build
+```
+
+The shard database files are written to:
+
+```text
+./data
+```
+
+## Automated Testing
+
+Run the automated suite:
+
+```bash
+python3 -m unittest discover -s tests -v
+```
+
+The tests cover:
+
+- shard routing
+- billing updates
+- duplicate protection
+- replica reads
+- replication failures
+- session-store behavior
+- Redis session serialization
+
+## How To Test Everything
+
+### 1. Run automated tests
+
+From the project root:
+
+```bash
+pipenv install --dev
+pipenv run test
+```
+
+Optional quality checks:
+
+```bash
+pipenv run lint
+pipenv run typecheck
+pipenv run format-check
+```
+
+### 2. Run a local custom demo
+
+```bash
+pipenv run python -m src.multi_tenant_directory.main demo \
+  --tenant-id tenant-demo \
+  --user-id user-demo \
+  --email demo@example.com \
+  --full-name "Demo User" \
+  --starting-balance 120.00 \
+  --charge-amount 20.00 \
+  --session-id session-demo \
+  --session-payload '{"role":"tester"}'
+```
+
+Expected result:
+
+- the command prints a tenant report line
+- shard DB files appear in `data/`
+
+### 3. Run a lightweight local load test
+
+```bash
+rm -f data/*.db
+pipenv run python -m src.multi_tenant_directory.main load-test \
+  --tenant-count 5 \
+  --users-per-tenant 10 \
+  --workers 4
+```
+
+Expected result:
+
+- the command prints operations, elapsed time, and throughput
+- multiple tenants are distributed across shard files
+
+### 4. Run full Docker Compose end-to-end validation
+
+```bash
+docker compose down
+rm -f data/*.db
+docker compose up --build
+```
+
+Expected behavior:
+
+- the app runs the load-test workload
+- tenant data is distributed across both primary shards
+- replica shards contain corresponding billing data
+- Redis contains many session keys
+
+### 5. Verify shard distribution
+
+In a second terminal:
+
+```bash
+sqlite3 data/primary-shard-0.db "SELECT tenant_id, user_id, email, full_name, is_active FROM users;"
+sqlite3 data/primary-shard-1.db "SELECT tenant_id, user_id, email, full_name, is_active FROM users;"
+```
+
+Expected result:
+
+- multiple tenants exist
+- tenants are split across the two shard databases
+
+### 6. Verify billing and replication
+
+```bash
+sqlite3 data/replica-shard-0.db "SELECT tenant_id, user_id, balance FROM billing_accounts;"
+sqlite3 data/replica-shard-1.db "SELECT tenant_id, user_id, balance FROM billing_accounts;"
+```
+
+For the default Docker Compose workload, each balance should be:
+
+```text
+105.00
+```
+
+because the load test uses:
+
+- starting balance `100.00`
+- charge amount `5.00`
+
+### 7. Verify Redis session storage
+
+```bash
+docker compose exec redis redis-cli
+```
+
+Inside Redis CLI:
+
+```bash
+KEYS *
+```
+
+Expected result for the default Docker Compose workload:
+
+- `50` session keys total
+- session keys like `session-0004-0005`
+
+This matches:
+
+- `5 tenants × 10 users = 50 sessions`
+
+## Logging and Error Handling
+
+The app includes `INFO`, `DEBUG`, and `ERROR` logging and uses specific application exceptions instead of broad catch-all handling.
+
+Examples:
+
+- `ShardNotFoundError`
+- `UserAlreadyExistsError`
+- `BillingAccountNotFoundError`
+- `DataAccessError`
+- `ReplicationError`
+- `SessionStoreError`
+
+## Notes
+
+- SQLite is used here as a runnable stand-in for PostgreSQL.
+- Redis is the real NoSQL component used by the runtime.
+- Integration tests use the in-memory session backend so tests stay fast and isolated.
+- `docker-compose.yml` still contains a deprecated `version` field warning; it does not block functionality.

@@ -1,3 +1,5 @@
+version: "3.9"
+
 services:
   app:
     build: .
@@ -14,7 +16,13 @@ services:
       REDIS_DB: 0
     volumes:
       - .:/app
-    command: python -m src.multi_tenant_directory.main
+    command: >
+      python -m src.multi_tenant_directory.main load-test
+      --tenant-count 5
+      --users-per-tenant 10
+      --workers 4
+      --starting-balance 100.00
+      --charge-amount 5.00
 
   redis:
     image: redis:7-alpine
