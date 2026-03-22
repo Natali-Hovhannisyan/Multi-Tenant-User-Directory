@@ -27,3 +27,7 @@ class DataAccessError(DirectoryError):
 
 class ReplicationError(DirectoryError):
     """Raised when primary-to-replica synchronization fails."""
+
+
+class SessionStoreError(DirectoryError):
+    """Raised when the session store cannot complete an operation."""

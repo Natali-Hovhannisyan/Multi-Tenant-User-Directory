@@ -1,9 +1,16 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import cast
+import redis
 
 from src.multi_tenant_directory.config import AppConfig
-from src.multi_tenant_directory.infrastructure.sessions import InMemorySessionStore
+from src.multi_tenant_directory.exceptions import SessionStoreError
+from src.multi_tenant_directory.infrastructure.sessions import (
+    InMemorySessionStore,
+    RedisClientProtocol,
+    RedisSessionStore,
+)
 from src.multi_tenant_directory.infrastructure.sqlite import (
     ReplicaSynchronizer,
     ShardDatabasePaths,
@@ -58,7 +65,7 @@ class ApplicationContainer:
             shard_resolver=TenantShardResolver(
                 strategy=strategy, shards=primary_shards
             ),
-            session_store=InMemorySessionStore(),
+            session_store=self._build_session_store(config),
         )
         self.reporting: AnalyticsReportService = AnalyticsReportService(
             shard_resolver=ReplicaShardResolver(
@@ -68,4 +75,27 @@ class ApplicationContainer:
         self.replication: ReplicationService = ReplicationService(
             synchronizer=ReplicaSynchronizer(),
             shard_paths=shard_paths,
+        )
+
+    @staticmethod
+    def _build_session_store(
+        config: AppConfig,
+    ) -> InMemorySessionStore | RedisSessionStore:
+        if config.session_backend == "memory":
+            return InMemorySessionStore()
+
+        if config.session_backend == "redis":
+            return RedisSessionStore(
+                client=cast(
+                    RedisClientProtocol,
+                    redis.Redis(
+                        host=config.redis_host,
+                        port=config.redis_port,
+                        db=config.redis_db,
+                    ),
+                )
+            )
+
+        raise SessionStoreError(
+            f"unsupported session backend: {config.session_backend}"
         )

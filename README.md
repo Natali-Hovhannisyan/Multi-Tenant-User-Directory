@@ -14,7 +14,7 @@ The design intentionally separates responsibilities:
 ### SQL vs. NoSQL decision
 
 - Relational storage: billing and user directory records live in SQLite in this reference implementation because those operations need transactions, foreign keys, and consistency guarantees that mirror a production PostgreSQL choice.
-- Key-value storage: sessions use a `SessionStore` abstraction with an in-memory implementation for tests/demo. The Docker Compose file also includes Redis because that is the intended production-style fit for fast session lookup.
+- Key-value storage: sessions use a `SessionStore` abstraction with a real Redis-backed implementation for the app runtime and an in-memory implementation for tests.
 
 ### Sharding strategy
 
@@ -62,3 +62,7 @@ docker compose up --build
 ```
 
 The app writes shard databases to `./data`.
+
+## Python Version
+
+The project targets Python 3.14 consistently across Pipenv, Docker, and static type checking.

@@ -4,10 +4,16 @@ services:
   app:
     build: .
     container_name: multi-tenant-user-directory
+    depends_on:
+      - redis
     environment:
       PYTHONPATH: /app
       APP_DATA_DIR: /app/data
       SHARD_COUNT: 2
+      SESSION_BACKEND: redis
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_DB: 0
     volumes:
       - .:/app
     command: python -m src.multi_tenant_directory.main

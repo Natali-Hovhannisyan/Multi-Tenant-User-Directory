@@ -4,6 +4,7 @@ verify_ssl = true
 name = "pypi"
 
 [packages]
+redis = ">=5.0,<6"
 
 [dev-packages]
 black = ">=24.0,<25"

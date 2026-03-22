@@ -20,7 +20,11 @@ class UserDirectoryIntegrationTests(unittest.TestCase):
     def setUp(self) -> None:
         self.temp_dir: tempfile.TemporaryDirectory[str] = tempfile.TemporaryDirectory()
         self.container: ApplicationContainer = ApplicationContainer(
-            AppConfig(data_dir=self.temp_dir.name, shard_count=2)
+            AppConfig(
+                data_dir=self.temp_dir.name,
+                shard_count=2,
+                session_backend="memory",
+            )
         )
         self.strategy: HashTenantShardStrategy = HashTenantShardStrategy(2)
 
