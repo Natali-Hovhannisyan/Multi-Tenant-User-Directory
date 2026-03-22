@@ -8,6 +8,10 @@ from pathlib import Path
 
 from src.multi_tenant_directory.config import AppConfig
 from src.multi_tenant_directory.domain.models import Session, User
+from src.multi_tenant_directory.exceptions import (
+    BillingAccountNotFoundError,
+    UserAlreadyExistsError,
+)
 from src.multi_tenant_directory.services.bootstrap import ApplicationContainer
 from src.multi_tenant_directory.services.sharding import HashTenantShardStrategy
 
@@ -75,11 +79,34 @@ class UserDirectoryIntegrationTests(unittest.TestCase):
         self.assertEqual(updated.balance, Decimal("109.99"))
 
     def test_charge_user_raises_for_missing_billing_account(self) -> None:
-        with self.assertRaises(LookupError):
+        with self.assertRaises(BillingAccountNotFoundError):
             self.container.user_directory.charge_user(
                 tenant_id=self._tenant_for_shard(0),
                 user_id="missing-user",
                 amount=Decimal("1.00"),
+            )
+
+    def test_registering_duplicate_user_raises_specific_error(self) -> None:
+        tenant_id = self._tenant_for_shard(0)
+        user = User(
+            tenant_id=tenant_id,
+            user_id="duplicate-user",
+            email="duplicate@example.com",
+            full_name="Duplicate User",
+            is_active=True,
+        )
+
+        self.container.user_directory.register_user(
+            user=user,
+            starting_balance=Decimal("20.00"),
+            currency="USD",
+        )
+
+        with self.assertRaises(UserAlreadyExistsError):
+            self.container.user_directory.register_user(
+                user=user,
+                starting_balance=Decimal("20.00"),
+                currency="USD",
             )
 
     def test_reports_read_from_replica_and_require_replication_to_see_latest_data(

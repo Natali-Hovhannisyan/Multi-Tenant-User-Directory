@@ -1,10 +1,17 @@
 from __future__ import annotations
 
+import tempfile
 import unittest
 from dataclasses import dataclass, field
 from decimal import Decimal
+from pathlib import Path
 
 from src.multi_tenant_directory.domain.models import TenantReport
+from src.multi_tenant_directory.exceptions import ReplicationError, ShardNotFoundError
+from src.multi_tenant_directory.infrastructure.sqlite import (
+    ReplicaSynchronizer,
+    ShardDatabasePaths,
+)
 from src.multi_tenant_directory.ports.repositories import AnalyticsRepository
 from src.multi_tenant_directory.services.directory import TenantShardResolver
 from src.multi_tenant_directory.services.reporting import (
@@ -12,6 +19,7 @@ from src.multi_tenant_directory.services.reporting import (
     ReplicaShardContext,
     ReplicaShardResolver,
 )
+from src.multi_tenant_directory.services.replication import ReplicationService
 from src.multi_tenant_directory.services.sharding import HashTenantShardStrategy
 
 
@@ -40,14 +48,35 @@ class ReportingServiceTests(unittest.TestCase):
     def test_missing_replica_shard_configuration_raises_clear_error(self) -> None:
         resolver = ReplicaShardResolver(strategy=HashTenantShardStrategy(2), shards={})
 
-        with self.assertRaises(LookupError):
+        with self.assertRaises(ShardNotFoundError):
             resolver.resolve("tenant-any")
 
     def test_missing_primary_shard_configuration_raises_clear_error(self) -> None:
         resolver = TenantShardResolver(strategy=HashTenantShardStrategy(2), shards={})
 
-        with self.assertRaises(LookupError):
+        with self.assertRaises(ShardNotFoundError):
             resolver.resolve("tenant-any")
+
+    def test_replication_service_raises_specific_error_for_unknown_shard(self) -> None:
+        service = ReplicationService(
+            synchronizer=ReplicaSynchronizer(),
+            shard_paths={},
+        )
+
+        with self.assertRaises(ReplicationError):
+            service.replicate_shard(99)
+
+    def test_replica_synchronizer_raises_specific_error_for_missing_primary(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            paths = ShardDatabasePaths(
+                primary=Path(temp_dir) / "missing-primary.db",
+                replica=Path(temp_dir) / "replica.db",
+            )
+
+            with self.assertRaises(ReplicationError):
+                ReplicaSynchronizer().synchronize(paths)
 
 
 @dataclass
