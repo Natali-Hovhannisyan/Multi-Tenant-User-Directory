@@ -5,6 +5,7 @@ import sqlite3
 from dataclasses import dataclass
 from decimal import Decimal
 from pathlib import Path
+from typing import cast
 
 from src.multi_tenant_directory.domain.models import BillingAccount, TenantReport, User
 from src.multi_tenant_directory.ports.repositories import (
@@ -91,18 +92,24 @@ class SqliteUserRepository(UserRepository):
 
     def get(self, tenant_id: str, user_id: str) -> User | None:
         with self._connection_factory.connect() as connection:
-            row = connection.execute(
-                "SELECT tenant_id, user_id, email, full_name, is_active FROM users WHERE tenant_id = ? AND user_id = ?",
-                (tenant_id, user_id),
-            ).fetchone()
+            row = cast(
+                sqlite3.Row | None,
+                connection.execute(
+                    "SELECT tenant_id, user_id, email, full_name, is_active FROM users WHERE tenant_id = ? AND user_id = ?",
+                    (tenant_id, user_id),
+                ).fetchone(),
+            )
         return _row_to_user(row) if row else None
 
     def list_by_tenant(self, tenant_id: str) -> list[User]:
         with self._connection_factory.connect() as connection:
-            rows = connection.execute(
-                "SELECT tenant_id, user_id, email, full_name, is_active FROM users WHERE tenant_id = ? ORDER BY user_id",
-                (tenant_id,),
-            ).fetchall()
+            rows = cast(
+                list[sqlite3.Row],
+                connection.execute(
+                    "SELECT tenant_id, user_id, email, full_name, is_active FROM users WHERE tenant_id = ? ORDER BY user_id",
+                    (tenant_id,),
+                ).fetchall(),
+            )
         return [_row_to_user(row) for row in rows]
 
 
@@ -130,18 +137,21 @@ class SqliteBillingRepository(BillingRepository):
     ) -> BillingAccount:
         with self._connection_factory.connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
-            row = connection.execute(
-                """
-                SELECT tenant_id, user_id, balance, currency
-                FROM billing_accounts
-                WHERE tenant_id = ? AND user_id = ?
-                """,
-                (tenant_id, user_id),
-            ).fetchone()
+            row = cast(
+                sqlite3.Row | None,
+                connection.execute(
+                    """
+                    SELECT tenant_id, user_id, balance, currency
+                    FROM billing_accounts
+                    WHERE tenant_id = ? AND user_id = ?
+                    """,
+                    (tenant_id, user_id),
+                ).fetchone(),
+            )
             if row is None:
                 raise LookupError("billing account not found")
 
-            new_balance = Decimal(row["balance"]) + amount
+            new_balance = Decimal(cast(str, row["balance"])) + amount
             connection.execute(
                 """
                 UPDATE billing_accounts
@@ -154,19 +164,22 @@ class SqliteBillingRepository(BillingRepository):
                 tenant_id=tenant_id,
                 user_id=user_id,
                 balance=new_balance,
-                currency=row["currency"],
+                currency=cast(str, row["currency"]),
             )
 
     def get(self, tenant_id: str, user_id: str) -> BillingAccount | None:
         with self._connection_factory.connect() as connection:
-            row = connection.execute(
-                """
-                SELECT tenant_id, user_id, balance, currency
-                FROM billing_accounts
-                WHERE tenant_id = ? AND user_id = ?
-                """,
-                (tenant_id, user_id),
-            ).fetchone()
+            row = cast(
+                sqlite3.Row | None,
+                connection.execute(
+                    """
+                    SELECT tenant_id, user_id, balance, currency
+                    FROM billing_accounts
+                    WHERE tenant_id = ? AND user_id = ?
+                    """,
+                    (tenant_id, user_id),
+                ).fetchone(),
+            )
         return _row_to_billing(row) if row else None
 
 
@@ -176,27 +189,34 @@ class SqliteAnalyticsRepository(AnalyticsRepository):
 
     def build_tenant_report(self, tenant_id: str) -> TenantReport:
         with self._connection_factory.connect() as connection:
-            user_row = connection.execute(
-                """
-                SELECT
-                    SUM(CASE WHEN is_active = 1 THEN 1 ELSE 0 END) AS active_users,
-                    SUM(CASE WHEN is_active = 0 THEN 1 ELSE 0 END) AS inactive_users
-                FROM users
-                WHERE tenant_id = ?
-                """,
-                (tenant_id,),
-            ).fetchone()
-            billing_rows = connection.execute(
-                "SELECT balance FROM billing_accounts WHERE tenant_id = ?",
-                (tenant_id,),
-            ).fetchall()
+            user_row = cast(
+                sqlite3.Row,
+                connection.execute(
+                    """
+                    SELECT
+                        SUM(CASE WHEN is_active = 1 THEN 1 ELSE 0 END) AS active_users,
+                        SUM(CASE WHEN is_active = 0 THEN 1 ELSE 0 END) AS inactive_users
+                    FROM users
+                    WHERE tenant_id = ?
+                    """,
+                    (tenant_id,),
+                ).fetchone(),
+            )
+            billing_rows = cast(
+                list[sqlite3.Row],
+                connection.execute(
+                    "SELECT balance FROM billing_accounts WHERE tenant_id = ?",
+                    (tenant_id,),
+                ).fetchall(),
+            )
         total_balance = sum(
-            (Decimal(row["balance"]) for row in billing_rows), Decimal("0")
+            (Decimal(cast(str, row["balance"])) for row in billing_rows),
+            Decimal("0"),
         )
         return TenantReport(
             tenant_id=tenant_id,
-            active_users=user_row["active_users"] or 0,
-            inactive_users=user_row["inactive_users"] or 0,
+            active_users=cast(int | None, user_row["active_users"]) or 0,
+            inactive_users=cast(int | None, user_row["inactive_users"]) or 0,
             total_balance=total_balance,
         )
 
@@ -209,18 +229,18 @@ class ReplicaSynchronizer:
 
 def _row_to_user(row: sqlite3.Row) -> User:
     return User(
-        tenant_id=row["tenant_id"],
-        user_id=row["user_id"],
-        email=row["email"],
-        full_name=row["full_name"],
-        is_active=bool(row["is_active"]),
+        tenant_id=cast(str, row["tenant_id"]),
+        user_id=cast(str, row["user_id"]),
+        email=cast(str, row["email"]),
+        full_name=cast(str, row["full_name"]),
+        is_active=bool(cast(int, row["is_active"])),
     )
 
 
 def _row_to_billing(row: sqlite3.Row) -> BillingAccount:
     return BillingAccount(
-        tenant_id=row["tenant_id"],
-        user_id=row["user_id"],
-        balance=Decimal(row["balance"]),
-        currency=row["currency"],
+        tenant_id=cast(str, row["tenant_id"]),
+        user_id=cast(str, row["user_id"]),
+        balance=Decimal(cast(str, row["balance"])),
+        currency=cast(str, row["currency"]),
     )

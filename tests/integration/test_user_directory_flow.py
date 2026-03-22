@@ -14,11 +14,11 @@ from src.multi_tenant_directory.services.sharding import HashTenantShardStrategy
 
 class UserDirectoryIntegrationTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.temp_dir = tempfile.TemporaryDirectory()
-        self.container = ApplicationContainer(
+        self.temp_dir: tempfile.TemporaryDirectory[str] = tempfile.TemporaryDirectory()
+        self.container: ApplicationContainer = ApplicationContainer(
             AppConfig(data_dir=self.temp_dir.name, shard_count=2)
         )
-        self.strategy = HashTenantShardStrategy(2)
+        self.strategy: HashTenantShardStrategy = HashTenantShardStrategy(2)
 
     def tearDown(self) -> None:
         self.temp_dir.cleanup()

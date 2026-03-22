@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import unittest
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from decimal import Decimal
 
 from src.multi_tenant_directory.domain.models import TenantReport
@@ -53,9 +53,7 @@ class ReportingServiceTests(unittest.TestCase):
 @dataclass
 class RecordingAnalyticsRepository(AnalyticsRepository):
     name: str
-
-    def __post_init__(self) -> None:
-        self.calls: list[str] = []
+    calls: list[str] = field(default_factory=list)
 
     def build_tenant_report(self, tenant_id: str) -> TenantReport:
         self.calls.append(tenant_id)

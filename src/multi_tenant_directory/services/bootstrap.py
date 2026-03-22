@@ -54,18 +54,18 @@ class ApplicationContainer:
                 primary=primary_path, replica=replica_path
             )
 
-        self.user_directory = UserDirectoryService(
+        self.user_directory: UserDirectoryService = UserDirectoryService(
             shard_resolver=TenantShardResolver(
                 strategy=strategy, shards=primary_shards
             ),
             session_store=InMemorySessionStore(),
         )
-        self.reporting = AnalyticsReportService(
+        self.reporting: AnalyticsReportService = AnalyticsReportService(
             shard_resolver=ReplicaShardResolver(
                 strategy=strategy, shards=replica_shards
             )
         )
-        self.replication = ReplicationService(
+        self.replication: ReplicationService = ReplicationService(
             synchronizer=ReplicaSynchronizer(),
             shard_paths=shard_paths,
         )
