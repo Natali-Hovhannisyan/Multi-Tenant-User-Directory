@@ -1,0 +1,19 @@
+version: "3.9"
+
+services:
+  app:
+    build: .
+    container_name: multi-tenant-user-directory
+    environment:
+      PYTHONPATH: /app
+      APP_DATA_DIR: /app/data
+      SHARD_COUNT: 2
+    volumes:
+      - .:/app
+    command: python -m src.multi_tenant_directory.main
+
+  redis:
+    image: redis:7-alpine
+    container_name: multi-tenant-session-cache
+    ports:
+      - "6379:6379"

@@ -1,0 +1,21 @@
+[[source]]
+url = "https://pypi.org/simple"
+verify_ssl = true
+name = "pypi"
+
+[packages]
+
+[dev-packages]
+black = ">=24.0,<25"
+pytest = ">=8.0,<9"
+ruff = ">=0.11,<0.12"
+
+[requires]
+python_version = "3.14"
+
+[scripts]
+test = "python -m unittest discover -s tests -v"
+lint = "ruff check src tests"
+format = "black src tests"
+format-check = "black --check src tests"
+quality = "sh -c 'python -m unittest discover -s tests -v && ruff check src tests && black --check src tests'"
